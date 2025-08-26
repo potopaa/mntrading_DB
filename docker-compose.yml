@@ -1,0 +1,40 @@
+services:
+  orchestrator:
+    profiles: ["once"]
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - ./:/app
+    env_file:
+      - .env
+    environment:
+      PYTHONUNBUFFERED: "1"
+    command: >
+      bash -lc "
+        pip install --no-cache-dir -r requirements.txt
+        && python orchestrator.py
+      "
+    restart: "no"
+
+  orchestrator-loop:
+    profiles: ["loop"]
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - ./:/app
+    env_file:
+      - .env
+    environment:
+      PYTHONUNBUFFERED: "1"
+      INTERVAL_MIN: "60"
+    command: >
+      bash -lc "
+        pip install --no-cache-dir -r requirements.txt
+        && while true; do
+             echo '[loop] run @' $(date -u +%F_%T) 'UTC';
+             python orchestrator.py || echo '[loop] run failed';
+             echo '[loop] sleeping' ${INTERVAL_MIN} 'min...';
+             sleep $((60*${INTERVAL_MIN}));
+           done
+      "
+    restart: unless-stopped

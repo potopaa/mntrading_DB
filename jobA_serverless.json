@@ -1,0 +1,35 @@
+{
+  "name": "MNTrading - Job A (1h ingest + pair screening)",
+  "max_concurrent_runs": 1,
+  "tags": { "project": "mntrading" },
+  "format": "MULTI_TASK",
+  "tasks": [
+    {
+      "task_key": "01_ingest_1h",
+      "notebook_task": {
+        "notebook_path": "/Workspace/Users/potopaa@gmail.com/mntrading/01_ingest_1h.py"
+      },
+      "compute": {
+        "spec": {
+          "serverless": {}
+        }
+      },
+      "timeout_seconds": 7200,
+      "max_retries": 1
+    },
+    {
+      "task_key": "02_screen_pairs",
+      "depends_on": [{ "task_key": "01_ingest_1h" }],
+      "notebook_task": {
+        "notebook_path": "/Workspace/Users/potopaa@gmail.com/mntrading/02_screen_pairs.py"
+      },
+      "compute": {
+        "spec": {
+          "serverless": {}
+        }
+      },
+      "timeout_seconds": 7200,
+      "max_retries": 1
+    }
+  ]
+}
