@@ -4,7 +4,7 @@
 
 ---
 
-## TL;DR / Quick start
+## Quick start
 
 1. Set up local environment (Python or Docker).
 2. Fill `.env` with Databricks access and job IDs.

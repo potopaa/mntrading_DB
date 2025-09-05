@@ -42,7 +42,7 @@ def read_json(dbfs_path: str) -> dict:
     raw = dbutils.fs.head(dbfs_path, 5 * 1024 * 1024)
     return json.loads(raw)
 
-# ---- 1) Read summary with best candidate ----
+
 if not path_exists(CANDIDATES_SUMMARY):
     dbutils.notebook.exit(f"Candidates summary not found: {CANDIDATES_SUMMARY}")
 
@@ -57,21 +57,21 @@ if not (name and uri):
 
 print(f"[PUBLISH] Best candidate: name={name}, AUC={auc}, uri={uri}")
 
-# Sanity: candidate folder must exist
+
 if not path_exists(uri):
     dbutils.notebook.exit(f"Candidate folder not found: {uri}")
 
-# ---- 2) Copy candidate -> production (clean replace) ----
+
 try:
     dbutils.fs.rm(PRODUCTION_DIR, True)
 except Exception:
     pass
 
-dbutils.fs.mkdirs("/Volumes/workspace/mntrading/raw/models")  # ensure parent
+dbutils.fs.mkdirs("/Volumes/workspace/mntrading/raw/models")
 dbutils.fs.cp(uri, PRODUCTION_DIR, recurse=True)
 print(f"[PUBLISH] Copied {uri} -> {PRODUCTION_DIR}")
 
-# ---- 3) Write champion_meta.json in production ----
+
 champion_meta = {
     "published_ts": int(time.time()),
     "candidate": {
@@ -83,8 +83,8 @@ champion_meta = {
 dbutils.fs.put(f"{PRODUCTION_DIR}/champion_meta.json", json.dumps(champion_meta), overwrite=True)
 print(f"[PUBLISH] Wrote {PRODUCTION_DIR}/champion_meta.json")
 
-# ---- 4) Quick check of expected files ----
-expected_any = ["model.json", "model.pkl"]  # format may vary (JSON LR or sklearn pickle)
+
+expected_any = ["model.json", "model.pkl"]
 present = {f.name for f in dbutils.fs.ls(PRODUCTION_DIR)}
 has_model = any(x in present for x in expected_any)
 has_meta  = "meta.json" in present

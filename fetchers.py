@@ -1,21 +1,9 @@
-# fetchers.py
-# ==========================================
-# Lightweight OHLCV fetchers using CCXT (Binance by default)
-# - Returns pandas.DataFrame with columns: ts (ms since epoch), open, high, low, close, volume, symbol, timeframe
-# - Safe for incremental pulls via since_ms / until_ms
-# - Compatible with orchestrator.py calls: fetch_ohlcv_batch(..., timeframe="1h"/"5m", limit=..., since_ms=...)
-# ==========================================
-
 from __future__ import annotations
-
 import os
 import time
-import math
-from typing import Iterable, List, Optional, Tuple, Dict, Any
-
+from typing import Iterable, List, Optional, Dict, Any
 import pandas as pd
 
-# CCXT is used for exchange access
 try:
     import ccxt
 except Exception as e:
@@ -31,10 +19,6 @@ def make_exchange(
     enable_rate_limit: bool = True,
     **kwargs: Any,
 ):
-    """
-    Create and return a CCXT exchange instance.
-    Reads API keys from env if present, but public OHLCV works without keys.
-    """
     if not hasattr(ccxt, exchange_id):
         raise ValueError(f"Unknown exchange_id: {exchange_id}")
 
@@ -44,14 +28,12 @@ def make_exchange(
         "timeout": kwargs.pop("timeout", 30000),
     }
 
-    # Optional keys (not required for public OHLCV)
     api_key = os.getenv("EXCHANGE_API_KEY")
     api_secret = os.getenv("EXCHANGE_API_SECRET")
     if api_key and api_secret:
         args["apiKey"] = api_key
         args["secret"] = api_secret
 
-    # Pass-through any extra kwargs
     args.update(kwargs)
 
     ex = klass(args)
@@ -71,17 +53,12 @@ def _fetch_symbol_ohlcv(
     max_rounds: int = 1000,
     verbose: bool = True,
 ) -> pd.DataFrame:
-    """
-    Fetch OHLCV bars for a single symbol/timeframe from `since_ms` up to `until_ms` (if provided).
-    - limit: max bars to fetch in TOTAL for this call (None means unlimited until hitting until_ms/no-more-data).
-    - Returns DataFrame with columns: ts, open, high, low, close, volume, symbol, timeframe
-    """
+
     cols = ["timestamp", "open", "high", "low", "close", "volume"]
     all_rows: List[List[float]] = []
     total_fetched = 0
     loops = 0
 
-    # ccxt uses 'since' as ms; 'until' is not widely supported, we enforce manually.
     next_since = since_ms
 
     while True:
@@ -89,7 +66,6 @@ def _fetch_symbol_ohlcv(
         if loops > max_rounds:
             break
 
-        # Effective per-request limit: keep it reasonably sized
         request_limit = 1000
         if limit is not None:
             request_limit = min(request_limit, max(1, limit - total_fetched))
@@ -99,10 +75,8 @@ def _fetch_symbol_ohlcv(
         data = ex.fetch_ohlcv(symbol, timeframe=timeframe, since=next_since, limit=request_limit)
 
         if not data:
-            # No data returned — stop
             break
 
-        # Enforce until_ms: trim if necessary
         if until_ms is not None:
             data = [row for row in data if row and row[0] <= until_ms]
             if not data:
@@ -111,26 +85,21 @@ def _fetch_symbol_ohlcv(
         all_rows.extend(data)
         total_fetched += len(data)
 
-        # Stop if we reached global limit
         if limit is not None and total_fetched >= limit:
             break
 
-        # Advance 'since' to the last timestamp + 1ms to avoid duplicates
         last_ts = data[-1][0]
         next_since = last_ts + 1
 
-        # Throttle (respect rate limits)
         if sleep_ms > 0:
             time.sleep(sleep_ms / 1000.0)
 
-        # If the exchange returned less than requested, likely reached the end
         if len(data) < request_limit:
             break
 
     if not all_rows:
         if verbose:
             print(f"[{timeframe}] {symbol} fetched 0 bars")
-        # Empty frame with expected columns
         df_empty = pd.DataFrame(columns=["ts", "open", "high", "low", "close", "volume", "symbol", "timeframe"])
         return df_empty
 
@@ -145,7 +114,7 @@ def _fetch_symbol_ohlcv(
     for c in ["open", "high", "low", "close", "volume"]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    df = df.dropna(subset=["open", "high", "low", "close"])  # basic sanity
+    df = df.dropna(subset=["open", "high", "low", "close"])
 
     if verbose and not df.empty:
         print(f"[{timeframe}] {symbol} fetched {len(df)} bars, last_ts={int(df['ts'].max())}")
@@ -166,13 +135,7 @@ def fetch_ohlcv_generic(
     sleep_ms: int = 400,
     verbose: bool = True,
 ) -> pd.DataFrame:
-    """
-    Fetch OHLCV for multiple symbols for a given timeframe.
-    - timeframe: e.g. "1h", "5m"
-    - since_ms/until_ms: millisecond epoch bounds (inclusive)
-    - limit: max bars per symbol (TOTAL for this call)
-    - Returns a single DataFrame for all symbols.
-    """
+
     exchange_kwargs = exchange_kwargs or {}
     ex = make_exchange(exchange_id, **exchange_kwargs)
 
@@ -196,11 +159,10 @@ def fetch_ohlcv_generic(
                 print(f"[{timeframe}] {sym} fetch error: {e}")
 
     if not frames:
-        # Return empty with expected schema
         return pd.DataFrame(columns=["ts", "open", "high", "low", "close", "volume", "symbol", "timeframe"])
 
     out = pd.concat(frames, ignore_index=True)
-    # Sort for determinism
+
     out.sort_values(by=["symbol", "ts"], inplace=True, kind="mergesort")
     out.reset_index(drop=True, inplace=True)
     return out
@@ -217,10 +179,7 @@ def fetch_ohlcv_1h(
     verbose: bool = True,
     **kwargs: Any,
 ) -> pd.DataFrame:
-    """
-    Convenience: fetch 1h candles. Signature accepts 'limit' and ignores extra kwargs,
-    so it remains compatible with orchestrator's call.
-    """
+
     return fetch_ohlcv_generic(
         symbols=symbols,
         timeframe="1h",
@@ -245,10 +204,7 @@ def fetch_ohlcv_5m(
     verbose: bool = True,
     **kwargs: Any,
 ) -> pd.DataFrame:
-    """
-    Convenience: fetch 5m candles. Signature accepts 'limit' and ignores extra kwargs,
-    so it remains compatible with orchestrator's call.
-    """
+
     return fetch_ohlcv_generic(
         symbols=symbols,
         timeframe="5m",
@@ -274,10 +230,7 @@ def fetch_ohlcv_batch(
     verbose: bool = True,
     **kwargs: Any,
 ) -> pd.DataFrame:
-    """
-    Backward-compatible batch API used by orchestrator.py.
-    Routes to fetch_ohlcv_1h / fetch_ohlcv_5m based on timeframe.
-    """
+
     tf = str(timeframe).lower()
     if tf in ("1h", "60m", "h1"):
         return fetch_ohlcv_1h(

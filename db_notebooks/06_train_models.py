@@ -19,7 +19,7 @@ SCHEMA  = "mntrading"
 CANDIDATE_DATASETS = [
     f"{CATALOG}.{SCHEMA}.gold_training_dataset",
     f"{CATALOG}.{SCHEMA}.gold_dataset",
-    f"{CATALOG}.{SCHEMA}.silver_features_5m",   # must contain 'label' if used
+    f"{CATALOG}.{SCHEMA}.silver_features_5m",
 ]
 
 LABEL_COL = "label"
@@ -64,7 +64,7 @@ def log_json(run_name: str, params: dict, metrics: dict) -> None:
     except Exception as e:
         print(f"[WARN] failed to write log JSON: {e}")
 
-# ---------- Pick dataset ----------
+
 data_tbl = next((t for t in CANDIDATE_DATASETS if table_exists_uc(t)), None)
 if not data_tbl:
     dbutils.notebook.exit("No training dataset table found.")
@@ -76,7 +76,7 @@ print(f"[INFO] Using training dataset: {data_tbl}; rows={total_all}")
 if LABEL_COL not in df.columns:
     dbutils.notebook.exit(f"'{LABEL_COL}' column is missing in {data_tbl}.")
 
-# numeric features only
+
 numeric_types = {"double", "float", "int", "bigint", "smallint", "tinyint"}
 skip_cols = {LABEL_COL, "ts", "timestamp", "symbol", "pair", "id"}
 feature_cols = [
@@ -87,13 +87,13 @@ feature_cols = [
 if not feature_cols:
     dbutils.notebook.exit("No numeric feature columns detected.")
 
-# cast, drop nulls
+
 for c in feature_cols:
     df = df.withColumn(c, F.col(c).cast("float"))
 df = df.withColumn(LABEL_COL, F.col(LABEL_COL).cast("int"))
 df = df.na.drop(subset=feature_cols + [LABEL_COL])
 
-# sample to pandas
+
 frac = min(1.0, MAX_ROWS_PANDAS / max(1, total_all))
 df_sample = df.sample(False, frac, seed=RANDOM_STATE) if frac < 1.0 else df
 if frac < 1.0:
@@ -102,14 +102,14 @@ if frac < 1.0:
 pdf = df_sample.select(*(feature_cols + [LABEL_COL])).toPandas()
 print(f"[INFO] pandas sample shape: {pdf.shape}")
 
-# train/val
+
 X = pdf[feature_cols].astype(np.float32).values
 y = pdf[LABEL_COL].astype(np.int32).values
 X_train, X_val, y_train, y_val = train_test_split(
     X, y, test_size=TEST_FRACTION, random_state=RANDOM_STATE, stratify=y
 )
 
-# scale + LR
+
 scaler = StandardScaler()
 X_train_s = scaler.fit_transform(X_train)
 X_val_s   = scaler.transform(X_val)
@@ -120,7 +120,7 @@ proba = clf.predict_proba(X_val_s)[:, 1]
 auc   = float(roc_auc_score(y_val, proba))
 print(f"[MODEL] {CAND_NAME} AUC={auc:.4f}")
 
-# ---------- Save candidate as JSON directly to Volumes ----------
+
 dbutils.fs.mkdirs(CAND_DIR)
 
 model_json = {
@@ -138,7 +138,7 @@ model_json = {
     "metrics": {"auc": auc}
 }
 dbutils.fs.put(f"{CAND_DIR}/model.json", json.dumps(model_json), overwrite=True)
-# дублируем краткую мета-инфу (совместимость с шагом 08)
+
 meta = {"features": feature_cols, "label": LABEL_COL, "format": "json_lr"}
 dbutils.fs.put(f"{CAND_DIR}/meta.json", json.dumps(meta), overwrite=True)
 
@@ -147,7 +147,7 @@ log_json("cv_logreg_json",
          params={"candidate": CAND_NAME, "dataset_table": data_tbl, "n_features": len(feature_cols), "rows_total": int(total_all)},
          metrics={"auc": auc})
 
-# ---------- Champion summary for step 07 (один кандидат) ----------
+
 summary = {"best_model": {"name": CAND_NAME, "auc": auc, "uri": CAND_DIR}, "candidates": [{"name": CAND_NAME, "auc": auc, "uri": CAND_DIR}]}
 dbutils.fs.mkdirs("/Volumes/workspace/mntrading/raw/models")
 dbutils.fs.put(CANDIDATES_JSON, json.dumps(summary), overwrite=True)

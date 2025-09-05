@@ -9,12 +9,10 @@
 # COMMAND ----------
 
 # Databricks notebook source
-# --- Settings (Unity Catalog) ---
 CATALOG = "workspace"
 SCHEMA  = "mntrading"
 INPUT_PATH_5M = "/Volumes/workspace/mntrading/raw/ohlcv_5m.parquet"
 
-# --- Spark session ---
 from pyspark.sql import SparkSession, functions as F
 spark = SparkSession.builder.getOrCreate()
 spark.conf.set("spark.sql.session.timeZone", "UTC")
@@ -33,7 +31,6 @@ CREATE TABLE IF NOT EXISTS {TABLE} (
 ) USING DELTA
 """)
 
-# --- Robust parquet load via pandas/pyarrow ---
 import pandas as pd
 from pandas.api.types import (
     is_datetime64_any_dtype,
@@ -79,7 +76,6 @@ pdf = (pdf[["symbol","ts","open","high","low","close","volume"]]
        .dropna()
        .sort_values("ts"))
 
-# Optional: filter by screened pairs if present
 have_pairs = False
 try:
     pairs_pdf = spark.table(PAIRS).select("sym_a","sym_b").distinct().toPandas()
@@ -104,17 +100,3 @@ WHEN NOT MATCHED THEN INSERT *
 
 print(f"[OK] Ingested 5m into {TABLE}. Count=", spark.table(TABLE).count(),
       " filtered_by_pairs=", have_pairs)
-
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC SELECT COUNT(*) AS n5m FROM silver_ohlcv_5m;
-# MAGIC SELECT symbol, MIN(ts), MAX(ts), COUNT(*) AS n FROM silver_ohlcv_5m GROUP BY symbol ORDER BY n DESC LIMIT 5;
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC SELECT COUNT(*) AS n5m FROM silver_ohlcv_5m;
-# MAGIC SELECT symbol, MIN(ts), MAX(ts), COUNT(*) AS n FROM silver_ohlcv_5m GROUP BY symbol ORDER BY n DESC LIMIT 5;
-# MAGIC
